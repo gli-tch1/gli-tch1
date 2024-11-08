@@ -1,0 +1,89 @@
+//--- Input Parameters
+input double Lots = 0.1;                      // Lot size
+input int FastMAPeriod = 10;                  // Fast MA period
+input int SlowMAPeriod = 50;                  // Slow MA period
+input int StopLoss = 200;                     // Stop loss in points
+input int TakeProfit = 400;                   // Take profit in points
+input int Slippage = 3;                      // Maximum slippage in points
+
+#include <Trade\Trade.mqh>                    // Include the trade library
+CTrade trade;                                 // Create trade object
+
+//--- Indicator Variables
+double fastMA, slowMA;
+double previousFastMA, previousSlowMA;
+
+//--- Initialization
+int OnInit() {
+    return INIT_SUCCEEDED;
+}
+
+//--- Main EA Execution Code
+void OnTick() {
+    // Get current moving averages (corrected)
+    fastMA = iMA(_Symbol, Period(), FastMAPeriod, 0, MODE_SMA, PRICE_CLOSE, 0);
+    slowMA = iMA(_Symbol, Period(), SlowMAPeriod, 0, MODE_SMA, PRICE_CLOSE, 0);
+    
+    // Get previous moving averages (corrected)
+    previousFastMA = iMA(_Symbol, Period(), FastMAPeriod, 0, MODE_SMA, PRICE_CLOSE, 1);
+    previousSlowMA = iMA(_Symbol, Period(), SlowMAPeriod, 0, MODE_SMA, PRICE_CLOSE, 1);
+
+    // Get current market price
+    double currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+    //--- Check Entry Conditions and Open Orders
+    if (previousFastMA <= previousSlowMA && fastMA > slowMA && !PositionExists(POSITION_TYPE_BUY)) {
+        OpenPosition(POSITION_TYPE_BUY, Lots, StopLoss, TakeProfit, currentPrice);
+    }
+
+    if (previousFastMA >= previousSlowMA && fastMA < slowMA && !PositionExists(POSITION_TYPE_SELL)) {
+        OpenPosition(POSITION_TYPE_SELL, Lots, StopLoss, TakeProfit, currentPrice);
+    }
+
+    //--- Check Exit Conditions
+    if (PositionExists(POSITION_TYPE_BUY) && fastMA < slowMA) {
+        ClosePosition(POSITION_TYPE_BUY);
+    }
+    if (PositionExists(POSITION_TYPE_SELL) && fastMA > slowMA) {
+        ClosePosition(POSITION_TYPE_SELL);
+    }
+}
+
+//--- Open Position Function
+void OpenPosition(int type, double lots, int slPoints, int tpPoints, double price) {
+    double sl, tp;
+
+    // Calculate stop loss and take profit
+    if (type == POSITION_TYPE_BUY) {
+        sl = price - slPoints * _Point;
+        tp = price + tpPoints * _Point;
+        trade.Buy(lots, _Symbol, price, sl, tp, Slippage);
+    }
+    else if (type == POSITION_TYPE_SELL) {
+        sl = price + slPoints * _Point;
+        tp = price - tpPoints * _Point;
+        trade.Sell(lots, _Symbol, price, sl, tp, Slippage);
+    }
+}
+
+//--- Close Position Function
+void ClosePosition(int type) {
+    if (type == POSITION_TYPE_BUY) {
+        trade.PositionClose(_Symbol); // Close buy position
+    }
+    else if (type == POSITION_TYPE_SELL) {
+        trade.PositionClose(_Symbol); // Close sell position
+    }
+}
+
+//--- Check if Position Exists Function
+bool PositionExists(int type) {
+    // Check if a position is open for the current symbol (_Symbol)
+    if (PositionSelect(_Symbol)) {
+        // If the position exists, check if its type matches the specified type (buy/sell)
+        if (PositionGetInteger(POSITION_TYPE) == type) {
+            return true;  // Return true if a matching position is found
+        }
+    }
+    return false;  // Return false if no matching position is found
+}
